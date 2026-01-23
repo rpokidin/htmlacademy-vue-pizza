@@ -5,39 +5,9 @@
       <div class="content__wrapper">
         <h1 class="title title--big">Конструктор пиццы</h1>
 
-        <div class="content__dough">
+        <dough-selector v-model="pizza.dough" :items="doughItems" />
 
-          <div class="sheet">
-            <h2 class="title title--small sheet__title">Выберите тесто</h2>
-
-            <div class="sheet__content dough">
-              <label :class="`dough__input dough__input--${item.value}`" v-for="(item, index) in doughItems"
-                :key="item.id">
-                <img :src=getImage(item.image) alt="">
-                <input type="radio" name="dought" :value=item.value class="visually-hidden" :checked="index === 0">
-                <b>{{ item.name }}</b>
-                <span>{{ item.description }}</span>
-              </label>
-            </div>
-
-          </div>
-
-        </div>
-
-        <div class="content__diameter">
-          <div class="sheet">
-            <h2 class="title title--small sheet__title">Выберите размер</h2>
-
-            <div class="sheet__content diameter">
-              <label :class="`diameter__input diameter__input--${item.value}`" v-for="(item, index) in sizeItems"
-                :key="item.id">
-                <img :src=getImage(item.image) alt="">
-                <input type="radio" name="diameter" :value=item.value class="visually-hidden" :checked="index === 0">
-                <span>{{ item.name }}</span>
-              </label>
-            </div>
-          </div>
-        </div>
+        <diameter-selector v-model="pizza.size" :items="sizeItems" />
 
         <div class="content__ingredients">
           <div class="sheet">
@@ -45,38 +15,13 @@
 
             <div class="sheet__content ingredients">
 
-              <div class="ingredients__sauce">
-                <p>Основной соус:</p>
+              <sauce-selector v-model="pizza.sauce" :items="sauceItems" />
 
-                <label class="radio ingredients__input" v-for="(item, index) in sauceItems" :key="item.id">
-                  <input type="radio" name="sauce" :value=item.value :checked="index === 0">
-                  <span>{{ item.name }}</span>
-                </label>
-              </div>
-
-              <div class="ingredients__filling">
-                <p>Начинка:</p>
-
-                <ul class="ingredients__list">
-
-                  <li class="ingredients__item" v-for="item in ingredientItems" :key="item.id">
-                    <img :src=getImage(item.image) alt="">
-                    <span :class="`filling filling--${item.value}`">{{ item.name }}</span>
-
-                    <div class="counter counter--orange ingredients__counter">
-                      <button type="button" class="counter__button counter__button--minus" disabled>
-                        <span class="visually-hidden">Меньше</span>
-                      </button>
-                      <input type="text" name="counter" class="counter__input" value="0">
-                      <button type="button" class="counter__button counter__button--plus">
-                        <span class="visually-hidden">Больше</span>
-                      </button>
-                    </div>
-                  </li>
-
-                </ul>
-
-              </div>
+              <ingredients-selector
+                :values="pizza.ingredients"
+                :items="ingredientItems"
+                @update="updateIngredientAmount"
+              />
 
             </div>
           </div>
@@ -88,15 +33,12 @@
             <input type="text" name="pizza_name" placeholder="Введите название пиццы">
           </label>
 
-          <div class="content__constructor">
-            <div class="pizza pizza--foundation--big-tomato">
-              <div class="pizza__wrapper">
-                <div class="pizza__filling pizza__filling--ananas"></div>
-                <div class="pizza__filling pizza__filling--bacon"></div>
-                <div class="pizza__filling pizza__filling--cheddar"></div>
-              </div>
-            </div>
-          </div>
+          <pizza-constructor
+            :dough="pizza.dough"
+            :sauce="pizza.sauce"
+            :ingredients="pizza.ingredients"
+            @drop="addIngredient"
+          />
 
           <div class="content__result">
             <p>Итого: 0 ₽</p>
@@ -111,6 +53,12 @@
 </template>
 
 <script setup>
+import DoughSelector from "@/modules/constructor/DoughSelector.vue";
+import DiameterSelector from "@/modules/constructor/DiameterSelector.vue";
+import SauceSelector from "@/modules/constructor/SauceSelector.vue";
+import IngredientsSelector from "@/modules/constructor/IngredientsSelector.vue";
+import PizzaConstructor from "@/modules/constructor/PizzaConstructor.vue";
+
 import {
   normalizeDough,
   normalizeIngredients,
@@ -132,6 +80,51 @@ const getImage = image => {
   // https://vitejs.dev/guide/assets.html#new-url-url-import-meta-url
   return new URL(`../assets/img/${image}`, import.meta.url).href
 }
+
+const pizza = reactive({
+  name: "",
+  dough: doughItems[0].value,
+  size: sizeItems[0].value,
+  sauce: sauceItems[0].value,
+  ingredients: ingredientItems.reduce((acc, item) => {
+    acc[item.value] = 0;
+    return acc;
+  }, {}),
+});
+
+const price = computed(() => {
+  const { dough, size, sauce, ingredients } = pizza;
+
+  const sizeMultiplier =
+    sizeItems.find((item) => item.value === size)?.multiplier ?? 1;
+
+  const doughPrice =
+    doughItems.find((item) => item.value === dough)?.price ?? 0;
+
+  const saucePrice =
+    sauceItems.find((item) => item.value === sauce)?.price ?? 0;
+
+   /*
+   * Здесь мы при помощи метода map превращаем массив ингредиентов
+   * в массив значений, соответствующих итоговой стоимости каждого из них — просто умножаем цену на количество.
+   * После чего методом reduce вычисляем сумму всех элементов массива. Это даёт нам общую стоимость ингредиентов.
+   */
+  const ingredientsPrice = ingredientItems
+    .map((item) => ingredients[item.value] * item.price)
+    .reduce((acc, item) => acc + item, 0);
+
+  return (doughPrice + saucePrice + ingredientsPrice) * sizeMultiplier;
+});
+
+const disableSubmit = computed(() => {
+  return pizza.name.length === 0 || price.value === 0;
+});
+const addIngredient = (ingredient) => {
+  pizza.ingredients[ingredient]++;
+};
+const updateIngredientAmount = (ingredient, count) => {
+  pizza.ingredients[ingredient] = count;
+};
 </script>
 
 <style lang="scss">
